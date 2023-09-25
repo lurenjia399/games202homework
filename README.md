@@ -1,4 +1,9 @@
+
+
+
+
 # games202homework
+
 games202的作业
 
 # 1 阴影部分
@@ -59,22 +64,30 @@ shadow map方法的一个缺点在于其阴影质量取决于shadow map的分辨
 
 ![image-20230919205357707](D:\GitHub\games202homework\image\image-20230919205357707.png)
 
+效果：
+
+![image-20230921172506250](D:\GitHub\games202homework\image\image-20230921172506250.png)
+
+
+
 ## 2 PCF
 
 原理：
+
+区别于硬阴影，其总体思路为对采样点周围的一片区域进行采样，计算顶点被这些采样点遮挡的总体数量，再除以采样点的数量，作为该点被遮挡的程度系数。因此，它不是一个非0即1的数，而是一个浮点数。
 
 shader：
 
 ```glsl
 float PCF(sampler2D shadowMap, vec4 coords) 
 {
-
   poissonDiskSamples(coords.xy);
   float sum = 0.0;
   for(int i = 0; i < NUM_SAMPLES; i ++)
   {
-    // 每次单位圆上的采样点，这边 / 2048是因为shadowmap的大小是2048 * 2048
-    vec2 xy = (poissonDisk[i] * RADIUS) / 2048.0  + coords.xy;
+    // 得到了随机采样点poissonDisk[i]
+    // RADIUS / 2048.0 这个的目的是控制采样的范围，2048是指贴图的大小
+    vec2 xy = poissonDisk[i] * RADIUS / 2048.0  + coords.xy;
     float shadowMapDepth = unpack(texture2D(shadowMap, xy));
     if(coords.z > shadowMapDepth + BIAS)
     {
@@ -86,3 +99,92 @@ float PCF(sampler2D shadowMap, vec4 coords)
 }
 ```
 
+![image-20230921172534051](D:\GitHub\games202homework\image\image-20230921172534051.png)
+
+
+
+## 3 PCSS
+
+### avgblocker depth
+
+其中， findBlocker 函数中需要我们完成对遮挡物平均深度的计算。首先，还是调用采样函数，生成一系列的采样点。然后遍历数组，对于每一个偏移的 uv 坐标采样到的深度，若其产生了遮挡，则进行计数。最终计算得到被遮挡的平均深度。
+
+这里需要注意的是要考虑没有遮挡的情况，即计数为0，此时在计算遮挡的平均深度时会发生除数为0的情况。shader里面情况一有体现。
+
+同时，uv 偏移半径的选择对最终的结果也非常重要。由于远处的物体更容易被遮挡，当选择固定的较小的 radius 值时，其对距离光源较远的顶点进行平均遮挡深度的计算可能无法很好的表现出其被遮挡的程度（因为光源实际上是有一定形状的，而不是理想的无体积点，距离光源越远，光源的不同部分就越有可能被遮挡，从而无法对该点的照明做出贡献）。
+
+在采样数较多的情况下，这种缺陷会被放大，较小的 radius 会导致距离光源较远处的阴影边缘处的过渡很生硬，这正是因为较小的采样半径使得距离光源较远处的顶点采样时的平均遮挡深度过渡很生硬（可以类比模糊操作，使用较小的卷积核对边缘锐利处的模糊作用并不明显）
+
+这种剧烈的平均遮挡深度的变化会导致计算的半影直径的剧烈变化，从而导致最后的 PCF 采样半径在边缘处的突变，从而使边缘处的阴影过渡生硬。
+
+然而，过大的 radius 同样存在问题，即计算出的平均遮挡深度无法准确表示该点的被遮挡情况，顶点周围的平均遮挡深度相似，从而导致计算出的半影直径相似，无法表现出距离越远阴影越模糊的效果。
+
+因此，我们考虑使用自适应的采样半径 radius，顶点距离光源越远，其在 Shadowmap 上的成像范围就越大，应使用更大的采样半径，反之则使用更小的采样半径，如下图所示：
+
+![image-20230921171356908](D:\GitHub\games202homework\image\image-20230921171356908.png)
+
+
+
+### penumbra size
+
+根据前面计算出来的平均遮挡深度，我们可以利用相似三角形的性质计算出半影直径：
+
+![image-20230921171951279](D:\GitHub\games202homework\image\image-20230921171951279.png)
+
+shader:
+
+```glsl
+#define BIAS 0.0002			// 处理自遮挡问题的bias
+#define RADIUS 15.0			// pcf的采样范围
+#define NEAR_PLANE 0.0001	// 近平面的距离
+#define LIGHT_UV_SIZE 25.5 	// 光源范围
+    
+float findBlocker( sampler2D shadowMap,  vec2 uv, float zReceiver ) {
+  // 这里是用相似三角形来确定图一中红色区域的范围
+  float radiusScale = LIGHT_UV_SIZE * (zReceiver - NEAR_PLANE) / zReceiver;
+  poissonDiskSamples(uv);
+  float totalShadowDepth = 0.0;
+  int totalShadowNum = 0;
+  for(int i = 0; i < NUM_SAMPLES; i++)
+  {
+    vec2 DiskUV = poissonDisk[i] * radiusScale / 2048.0 + uv;
+    float shadowDepth = unpack(texture2D(shadowMap, DiskUV));
+    if(zReceiver > shadowDepth + BIAS)
+    {
+      // 在阴影里面
+      totalShadowDepth += shadowDepth;
+      totalShadowNum ++;
+    }
+  }
+  // 情况一：这两个判断很重要，防止除0的情况
+  if(totalShadowNum == 0)
+  {
+    return 1.0;
+  }
+  if(totalShadowNum == NUM_SAMPLES)
+  {
+    return 0.0;
+  }
+	return totalShadowDepth / float(totalShadowNum);
+}
+
+float PCSS(sampler2D shadowMap, vec4 coords){
+
+  // STEP 1: avgblocker depth
+  float avgblockerdepth = findBlocker(shadowMap, coords.xy, coords.z);
+
+  // STEP 2: penumbra size
+  // 第二步就是图二上面的，用相似三角形算出了w，第一步算出的avgblockerdepth就是绿色的部分
+  float penumbrasize = (coords.z - avgblockerdepth) / avgblockerdepth * LIGHT_UV_SIZE;
+
+  // STEP 3: filtering
+   float result = PCF(shadowMap, coords, penumbrasize);
+  
+  return result;
+
+}
+```
+
+效果图：也算凑乎吧
+
+![image-20230921170326017](D:\GitHub\games202homework\image\image-20230921170326017.png)
