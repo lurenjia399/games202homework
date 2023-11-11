@@ -1,0 +1,6 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/hw2/Assignment2/homework2/assets
+/hw2/Assignment2/prt/build
