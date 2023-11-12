@@ -61,7 +61,15 @@ class WebGLRenderer {
 
                     // Bonus - Fast Spherical Harmonic Rotation
                     //let precomputeL_RGBMat3 = getRotationPrecomputeL(precomputeL[guiParams.envmapId], cameraModelMatrix);
-                    
+                    let RGBMat = getMat3ValueFromRGB(precomputeL[guiParams.envmapId])
+                    for (let j = 0; j < 3; j++) {
+                        if (k == 'uPrecomputeL[' + j + ']') { // The rotation of the skybox
+                            gl.uniformMatrix3fv(
+                                this.meshes[i].shader.program.uniforms[k],
+                                false,
+                                RGBMat[j]);
+                        }
+                    }
                     
                 }
 

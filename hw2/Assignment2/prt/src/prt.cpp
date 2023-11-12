@@ -137,7 +137,7 @@ namespace ProjEnv
                     float deltaArea = CalcArea(x, y, width, height);
                     for (int l = 0; l <= SHOrder; l++) {
                         for (int m = -l; m <= l; m++) {
-                            double sh = sh::EvalSH(l, m, dir);
+                            double sh = sh::EvalSH(l, m, Eigen::Vector3d(dir.x(), dir.y(), dir.z()).normalized());
                             // 公式，光照强度 * sh() * 单位立体角
                             SHCoeffiecents[sh::GetIndex(l, m)] += Le * sh * deltaArea;
                             
@@ -188,7 +188,7 @@ public:
         }
     }
 
-    virtual void preprocess(const Scene *scene) override
+    virtual void preprocess(const Scene* scene) override
     {
 
         // Here only compute one mesh
@@ -202,6 +202,7 @@ public:
         int width, height, channel;
         std::vector<std::unique_ptr<float[]>> images =
             ProjEnv::LoadCubemapImages(cubePath.str(), width, height, channel);
+        // 这里算出的就是光照的球谐系数
         auto envCoeffs = ProjEnv::PrecomputeCubemapSH<SHOrder>(images, width, height, channel);
         m_LightCoeffs.resize(3, SHCoeffLength);
         for (int i = 0; i < envCoeffs.size(); i++)
@@ -215,33 +216,46 @@ public:
         fout << mesh->getVertexCount() << std::endl;
         for (int i = 0; i < mesh->getVertexCount(); i++)
         {
-            const Point3f &v = mesh->getVertexPositions().col(i);
-            const Normal3f &n = mesh->getVertexNormals().col(i);
+            const Point3f& v = mesh->getVertexPositions().col(i);
+            const Normal3f& n = mesh->getVertexNormals().col(i);
             auto shFunc = [&](double phi, double theta) -> double {
                 Eigen::Array3d d = sh::ToVector(phi, theta);
                 const auto wi = Vector3f(d.x(), d.y(), d.z());
+
+                double H = wi.normalized().dot(n.normalized());
                 if (m_Type == Type::Unshadowed)
                 {
                     // TODO: here you need to calculate unshadowed transport term of a given direction
                     // TODO: 此处你需要计算给定方向下的unshadowed传输项球谐函数值
-                    return 0;
+
+                    // 入射光线和发现的夹角
+                    return H > 0.0 ? H : 0.0;
                 }
                 else
                 {
                     // TODO: here you need to calculate shadowed transport term of a given direction
                     // TODO: 此处你需要计算给定方向下的shadowed传输项球谐函数值
-                    return 0;
+
+                    if (H > 0.0 && !scene->rayIntersect(Ray3f(v, wi.normalized())))
+                    {
+                        return H;
+                    }
+                    else
+                    {
+                        return 0.0;
+                    }
                 }
             };
             auto shCoeff = sh::ProjectFunction(SHOrder, shFunc, m_SampleCount);
             for (int j = 0; j < shCoeff->size(); j++)
             {
-                m_TransportSHCoeffs.col(i).coeffRef(j) = (*shCoeff)[j];
+                m_TransportSHCoeffs.col(i).coeffRef(j) = (*shCoeff)[j] / M_PI;
             }
         }
         if (m_Type == Type::Interreflection)
         {
             // TODO: leave for bonus
+        
         }
 
         // Save in face format
@@ -289,10 +303,10 @@ public:
         // TODO: you need to delete the following four line codes after finishing your calculation to SH,
         //       we use it to visualize the normals of model for debug.
         // TODO: 在完成了球谐系数计算后，你需要删除下列四行，这四行代码的作用是用来可视化模型法线
-        if (c.isZero()) {
+        /*if (c.isZero()) {
             auto n_ = its.shFrame.n.cwiseAbs();
             return Color3f(n_.x(), n_.y(), n_.z());
-        }
+        }*/
         return c;
     }
 
