@@ -69,3 +69,45 @@ G()为
 ![image-20231113232943590](F:\learn\games202homework\hw2\image\image-20231113232943590.png)
 
 # 2 Precompute Radiance Transfer(PRT)
+
+## 1 前导知识
+
+### 1 卷积
+
+![image-20231115103439390](D:\GitHub\games202homework\hw2\image-20231115103439390.png)
+
+时域上模糊的操作就是频域上的乘积，也就是卷积。
+
+### 2 基函数
+
+![image-20231115104032143](D:\GitHub\games202homework\hw2\image-20231115104032143.png)
+
+基函数的表示
+
+### 3 球谐函数
+
+![image-20231115104525709](D:\GitHub\games202homework\hw2\image-20231115104525709.png)
+
+任何一个二维函数都能用球谐函数表示，类似于一维里面的傅里叶展开
+
+![image-20231115105601835](D:\GitHub\games202homework\hw2\image-20231115105601835.png)
+
+任何一个二维函数 * 任意一个球谐函数的基函数 在积分 就能得到对应基函数的系数，这个过程也叫投影。
+
+类比于一个向量，他就能用三个基向量的系数来表示。
+
+两个函数相乘求积分被称为函数内积，这个操作就相当于求两个向量内积，也就是点乘。
+
+## 2 PRT
+
+![image-20231115113929225](D:\GitHub\games202homework\hw2\image-20231115113929225.png)
+
+渲染方程中的三个积分项都可以看作是球面函数 
+
+![image-20231115114720356](D:\GitHub\games202homework\hw2\image-20231115114720356.png)
+
+作出假设，场景中的所有东西都不变，将渲染方程就看作两部分。
+
+lighting：将其用基函数的方式表示。
+
+Lighting transport：一个shadering point 上的性质，可以看作是这样，因为场景中所有东西都不变。
