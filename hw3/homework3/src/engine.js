@@ -26,14 +26,14 @@ function GAMES202Main() {
 	let cameraPosition, cameraTarget;
 	// /*
 	// Cube
-	cameraPosition = [6, 1, 0]
-	cameraTarget = [0, 0, 0]
-	// */
-	/*
+	// cameraPosition = [6, 1, 0]
+	// cameraTarget = [0, 0, 0]
+	
+	
 	// Cave
 	cameraPosition = [4.18927, 1.0313, 2.07331]
 	cameraTarget = [2.92191, 0.98, 1.55037]
-	*/
+	
 	camera.position.set(cameraPosition[0], cameraPosition[1], cameraPosition[2]);
 	camera.fbo = new FBO(gl);
 
@@ -85,9 +85,9 @@ function GAMES202Main() {
 	renderer.addLight(directionLight);
 
 	// Add shapes
-	loadGLTF(renderer, 'assets/cube/', 'cube1', 'SSRMaterial');
+	// loadGLTF(renderer, 'assets/cube/', 'cube1', 'SSRMaterial');
 	// loadGLTF(renderer, 'assets/cube/', 'cube2', 'SSRMaterial');
-	// loadGLTF(renderer, 'assets/cave/', 'cave', 'SSRMaterial');
+	loadGLTF(renderer, 'assets/cave/', 'cave', 'SSRMaterial');
 
 	function createGUI() {
 		const gui = new dat.gui.GUI();

@@ -122,9 +122,34 @@ vec3 GetGBufferDiffuse(vec2 uv) {
  *
  */
 vec3 EvalDiffuse(vec3 wi, vec3 wo, vec2 uv) {
+
+{
   vec3 L = vec3(0.0);
+  // 菲涅尔项
+  float F0 = 1.;
+  vec3 h = normalize(wi + wo);
+  vec3 v = wi;
+  float Fresnel_term = F0 + (1.0 - F0) * pow((1.0 - dot(h,v)),5.);
+  // 法线分布项
+  float alpha = F0;
+  vec3 n = GetGBufferNormalWorld(uv);
+  float NDF_div = pow(pow(dot(n,h),2.) * (pow(alpha,2.) - 1.) + 1., 2.);
+  float NDF_GGXTR = pow(alpha,2.) / (M_PI * NDF_div);
+  // 几何遮蔽项
+  alpha = pow(( alpha + 1.0 ) * 0.5, 2.);
+  float k = alpha * 0.5;
+  float G1L = dot(n,wo) / ( dot(n,wo) * (1.0 - k) + k);
+  float G1V = dot(n,wi) / ( dot(n,wi) * (1.0 - k) + k);
+  float Graphic_term = G1L * G1V;
+  // BRDF项
+  vec3 BRDF = GetGBufferDiffuse(uv) * Fresnel_term * Graphic_term * NDF_GGXTR / (4.0 * dot(n,wi) * dot(n,wo));
+  // return BRDF;
+}
+
+
   vec3 N = GetGBufferNormalWorld(uv);
   float dotValue = dot(wi, N) * 0.5 + 0.5;
+
   vec3 diffuse = GetGBufferDiffuse(uv);
 
   return diffuse * dotValue * INV_PI;
@@ -157,12 +182,14 @@ bool RayMarch(vec3 ori, vec3 dir, out vec3 hitPos) {
   for(int i = 0; i < 150; ++i)
   {
     vec2 uv = GetScreenCoordinate(pos);
-    float map_depth = GetGBufferuShadow(uv);
+    float map_depth = GetGBufferDepth(uv);
     float pos_depth = GetDepth(pos);
-    if(pos_depth >= map_depth)
+    if(pos_depth - map_depth > 0.0001)
     {
       // 有交点
       hitPos = pos;
+
+      return true;
     }
     pos += dir * step;
   }
@@ -170,10 +197,24 @@ bool RayMarch(vec3 ori, vec3 dir, out vec3 hitPos) {
   return false;
 }
 
+vec3 EvalReflect(vec3 wi, vec3 wo, vec2 uv) {
+  vec3 L = vec3(0.0);
+  vec3 hitpos = vec3(1.0);
+  vec3 N = GetGBufferNormalWorld(uv);
+  vec3 dir = normalize(reflect(-wo, N));
+  bool bIshit = RayMarch(vPosWorld.xyz, dir, hitpos);
+  if(bIshit)
+  {
+    L = GetGBufferDiffuse(GetScreenCoordinate(hitpos));
+  }
+
+  return L;
+}
+
 #define SAMPLE_NUM 1
 
 void main() {
-  float s = InitRand(gl_FragCoord.xy);
+  
 
   vec3 L = vec3(0.0);
   {
@@ -185,13 +226,51 @@ void main() {
     vec3 wo = normalize(uCameraPos - vPosWorld.xyz);
     // 直接光照 采样点的brdf
     vec3 diffuse = EvalDiffuse(wi, wo, GetScreenCoordinate(vPosWorld.xyz));
-    // 直接光照 出射的radiance
+    // 直接光照 出射的radiance 漫反射
     L = L * diffuse;
+
+    // 直接光照 出射的radiance 镜面反射，测试用
+    // L  = (EvalReflect(wi, wo, GetScreenCoordinate(vPosWorld.xyz)) +  GetGBufferDiffuse(GetScreenCoordinate(vPosWorld.xyz))) / 2.0;
+    // L = EvalReflect(wi, wo, GetScreenCoordinate(vPosWorld.xyz));
   }
 
+  vec3 L_temp = vec3(0.0);
   {
+    
+    for(int i = 0; i < SAMPLE_NUM; ++i)
+    {
+      float s = InitRand(gl_FragCoord.xy);
+      // 入射方向
+      vec3 wi = normalize(uCameraPos - vPosWorld.xyz);
+      float pdf = 1.0;
+      // 采样光线出射方向
+      vec3 wo_local = SampleHemisphereCos(s, pdf);
+      vec3 t = vec3(1.0);
+      vec3 b = vec3(1.0);
+      vec3 n = normalize(GetGBufferNormalWorld(GetScreenCoordinate(vPosWorld.xyz)));
+      LocalBasis(n, t, b);
+      // 这里就随便取了一个名称，表示 局部空间到世界空间的转化
+      mat3 tbn = mat3(t, b, n);
+      vec3 wo_world = tbn * wo_local;
+      // 出射方向
+      vec3 wo = vec3(wo_world - vPosWorld.xyz);
+      wo = normalize(wo);
 
+      vec3 hit = vec3(0.0);
+      bool bIshit = RayMarch(vPosWorld.xyz, wo, hit);
+      if( bIshit)
+      {
+        L_temp += EvalDiffuse(wo, wi, GetScreenCoordinate(vPosWorld.xyz)) // 采样点的 brdf
+            * EvalDirectionalLight(GetScreenCoordinate(hit))      // 间接光照点的 irradiance
+            * EvalDiffuse(uLightDir, -wo, GetScreenCoordinate(hit))       // 间接光照点的 brdf
+            / pdf;                        // 概率密度，采样出射方向时得到
+
+      }
+    }
+    L_temp = L_temp / float(SAMPLE_NUM);
   }
+
+  L = L + L_temp;
   
 
   vec3 color = pow(clamp(L, vec3(0.0), vec3(1.0)), vec3(1.0 / 2.2));
