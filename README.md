@@ -371,6 +371,74 @@ glossy物体的BRDF就不是一个常数了，我们从不同的方向看过去�
 
 5 渲染方程中还有visibility项，计算很困难，这里不考虑了
 
+# 5 Screen Space Ambient Occlusion(SSAO)
+
+在屏幕空间下对全局光照的一个近似。
+
+我们不知道间接光照是什么，所以假设每个采样点所接受的间接光照都是一个常数。
+
+![image-20231122104744188](D:\GitHub\games202homework\image\image-20231122104744188.png)
+
+虽然我们认为间接光照是一个常数，但对于一个采样点来说，它无法接受到半球上所有方向的间接光照，会有遮挡，就像图中的AO贴图那样。
+
+## 1 理论基础是什么呢？
+
+![image-20231122110257825](D:\GitHub\games202homework\image\image-20231122110257825.png)
+
+我们把visibility拆出来，什么情况下能拆出来呢？（1 g(x)的覆盖范围很小 2 g(x) 是平滑的 ）：
+
+![image-20231122112251871](D:\GitHub\games202homework\image\image-20231122112251871.png)
+
+蓝色框：就是半球上每个立体角的可见性的和，然后在取平均
+
+黄色框：间接光照的radiance是个常数，BRDF是漫反射，cos积分是PI，所以结果就是 radiance * 漫反射系数，这两个值我们都不知道是多少，所以就随便指定一个得了。
+
+深入理解1 ：
+
+![image-20231122113113155](D:\GitHub\games202homework\image\image-20231122113113155.png)
+
+这个步骤就是f(x)的在g(x)范围上的平均
+
+深入理解2 ：
+
+![image-20231122113236930](D:\GitHub\games202homework\image\image-20231122113236930.png)
+
+![image-20231122113536917](D:\GitHub\games202homework\image\image-20231122113536917.png)
+
+这个拆分就是把cosdw看作是一个整体，这个整体就是对单位圆上的一个微小的面积。
+
+## 2 简单理解
+
+![image-20231122113839153](D:\GitHub\games202homework\image\image-20231122113839153.png)
+
+1 间接光照是常数
+
+2 BRDF是常数
+
+3 渲染方程直接就变成了常数 * 对visibility半球上的积分
+
+所以我们需要计算的就是在屏幕空间，对visibility积分的平均
+
+## 3 求解可见项平均
+
+![image-20231122114808103](D:\GitHub\games202homework\image\image-20231122114808103.png)
+
+1 我们采样，对每个shadering point为中心，半径为R的球上采样
+
+2 如果采样点的深度小于深度图的深度，那么visibility就是1可见，
+
+如果大于深度图的深度，visibility就是0不可见，这样近似来做。
+
+但是这样做会有问题，就像图2展示的问题。还有问题就是我们对球上采样，但实际上我们应该对shadering point的法线方向上的半球采样，因为背面的光线肯定不会对我们的shadering point有贡献。
+
+![image-20231122115658792](D:\GitHub\games202homework\image\image-20231122115658792.png)
+
+
+
+
+
+
+
 # 6 Screen Space Reflect(SSR)
 
 基础思路：
