@@ -31,7 +31,7 @@ samplePoints squareToCosineHemisphere(int sample_count){
             double sampley = (p + rng(gen)) / sample_side;
             
             double theta = 0.5f * acos(1 - 2*samplex);
-            double phi =  2 * M_PI * sampley;
+            double phi =  2 * std::_Pi * sampley;
             Vec3f wi = Vec3f(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
             float pdf = wi.z / PI;
             
@@ -79,7 +79,9 @@ Vec3f IntegrateBRDF(Vec3f V, float roughness, float NdotV) {
     float C = 0.0;
     const int sample_count = 1024;
     Vec3f N = Vec3f(0.0, 0.0, 1.0);
-    float R0 = 0.3;
+    // 注意这里反射率取 1.0 了
+    // 我猜测是因为，我们要算的东西是，在BRDF下反射出的能量，材质自己本身不吸收
+    float R0 = 1.0;
 
     samplePoints sampleList = squareToCosineHemisphere(sample_count);
     for (int i = 0; i < sample_count; i++) {
@@ -88,12 +90,24 @@ Vec3f IntegrateBRDF(Vec3f V, float roughness, float NdotV) {
         L = L / std::sqrt(L.x * L.x + L.y * L.y + L.z * L.z);
         Vec3f H = (V + L);
         H = H / std::sqrt(H.x * H.x + H.y * H.y + H.z * H.z);
-        float F = R0 + (1.0 - R0) * std::pow((1 - NdotV), 5);
+        float F =  R0 + (1.0 - R0) * std::pow((1 - NdotV), 5);
         float D = DistributionGGX(N, H, roughness);
-        float G = GeometrySmith(roughness, dot(H, V), dot(H, L));
+        float G = GeometrySmith(roughness, dot(N, V), dot(N, L));//这里求G的时候，传的需要是法线，而不是半程向量
         float BRDF = F * D * G / (4 * dot(N, V) * dot(N, L));
 
-        float ni = std::sqrt(1 - NdotV * NdotV);
+        float NdotL = std::fmax(dot(N, L), 0.0);
+        // 注意这个地方，求得cos值，不是sin值，也不是cos * sin
+        /*
+        * 我们渲染方程可以写成三种形式
+        * 1 对立体角积分，正就是我们正常说的那种形式，
+        * 2 对theta和phi积分，也就是把d立体角展开成dtheta * dphi
+        * 3 在第二种的情况下进行合并，将cos * dtheta 变成 dsin(theta)
+        *总结:1 里面，被积函数是cos(theta)
+        *     2 里面，被积函数是cos(theta) * sin(theta)
+        *     3 里面，被积函数是sin(theta)
+        */
+        // 在这里的情况下，因为我们采样的时候的积分项是立体角，所以就选用第一种情况，也就是被积函数里面是cos(theta)
+        float ni = NdotL;
 
         A += BRDF * ni / sampleList.PDFs[i];
         B += BRDF * ni / sampleList.PDFs[i];

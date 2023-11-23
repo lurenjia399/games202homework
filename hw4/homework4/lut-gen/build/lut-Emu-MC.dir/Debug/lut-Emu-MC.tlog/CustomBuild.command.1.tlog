@@ -1,0 +1,10 @@
+^F:\LEARN\GAMES202HOMEWORK\HW4\HOMEWORK4\LUT-GEN\CMAKELISTS.TXT
+setlocal
+"D:\Program Files\CMake\bin\cmake.exe" -SF:/learn/games202homework/hw4/homework4/lut-gen -BF:/learn/games202homework/hw4/homework4/lut-gen/build --check-stamp-file F:/learn/games202homework/hw4/homework4/lut-gen/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
