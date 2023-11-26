@@ -506,3 +506,31 @@ glossy物体的BRDF就不是一个常数了，我们从不同的方向看过去�
 2 如果是diffuse的采样点，反射是一个lobe，那么就可以通过蒙特卡洛积分的方式求解
 
 3 这里需要注意的是间接光照点的BRDF我们认为是diffuse的，因为我们看到间接光照点的颜色是该点反射到摄像机上的radiance，而我们不知道该点反射到采样点的radiance是多少，所以我们假定BRDF是diffuse的，那么简介光照点反射出的radiance都是相等的了
+
+# 8 Real-Time Ray-Tracing(RTRT)
+
+![image-20231126153913840](F:\learn\games202homework\image\image-20231126153913840.png)
+
+1 spp：每个像素采样一次
+
+![image-20231126153950268](F:\learn\games202homework\image\image-20231126153950268.png)
+
+1 spp 需要的光线就有三条
+
+![image-20231126154030744](F:\learn\games202homework\image\image-20231126154030744.png)
+
+光线追踪里面最关的技术就是降噪！！！
+
+## 1 Temporal 时间上的降噪
+
+![image-20231126155713447](F:\learn\games202homework\image\image-20231126155713447.png)
+
+降噪的非常重要的想法就是时间上的一个滤波，思路 就是：
+
+1 对当前帧的画面降噪，那么认为前一帧的画面已经降噪成功了
+
+2 可以使用motion vectors来确认前一帧的位置，就像图中的蓝色向量那样
+
+3 每帧画面的spp会非常多，因为当前帧是由前一帧继承过来的，spp是逐渐增加的
+
+4 这是时间上降噪，空间上的呢，也就是一张图的降噪呢
