@@ -1,0 +1,11 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\ext",
+    "\\ext\\filesystem",
+    "\\ext\\tinyexr",
+    "\\util"
+  ],
+  "SelectedNode": "\\util\\mathutil.cpp",
+  "PreviewInSolutionExplorer": false
+}

@@ -13,8 +13,30 @@ void Denoiser::Reprojection(const FrameInfo &frameInfo) {
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             // TODO: Reproject
-            m_valid(x, y) = false;
-            m_misc(x, y) = Float3(0.f);
+            
+            
+
+            float cur_m_id = frameInfo.m_id(x, y);
+            Float3 curWorldPos = frameInfo.m_position(x, y);
+            Matrix4x4 curModelToWorld = frameInfo.m_matrix[cur_m_id];
+            Matrix4x4 preModelToWorld = m_preFrameInfo.m_matrix[m_preFrameInfo.m_id(x, y)];
+            Matrix4x4 preWorldToScreen = preWorldToScreen;
+            Float3 preFrameScreenPos = preWorldToScreen * preModelToWorld * Inverse(curModelToWorld) * curWorldPos;
+            float pre_m_id = m_preFrameInfo.m_id(preFrameScreenPos.x, preFrameScreenPos.y);
+
+            if (preFrameScreenPos.x > 0 
+                && preFrameScreenPos.x < width 
+                && preFrameScreenPos.y > 0 
+                && preFrameScreenPos.y < height &&
+                pre_m_id == cur_m_id) 
+            {
+
+                m_valid(x, y) = true;
+            }else {
+                m_valid(x, y) = false;
+                
+            }
+            m_misc(x, y) = m_accColor(preFrameScreenPos.x, preFrameScreenPos.y);
         }
     }
     std::swap(m_misc, m_accColor);
@@ -46,6 +68,37 @@ Buffer2D<Float3> Denoiser::Filter(const FrameInfo &frameInfo) {
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             // TODO: Joint bilateral filter
+
+            int x_min = (x - kernelRadius) < 0 ? 0 : x - kernelRadius;
+            int x_max = (x + kernelRadius) > width ? width : x + kernelRadius;
+            int y_min = (y - kernelRadius) < 0 ? 0 : y - kernelRadius;
+            int y_max = (y + kernelRadius) > height ? height : y + kernelRadius;
+            
+            
+            for (int h = y_min; h < y_max; h++) {
+                for (int w = x_min; w < x_max; w++) {
+                    float item1_norm = SqrLength(Float3(w - h, h - y, 0));
+                    float item1_denorm = 2 * Sqr(m_sigmaPlane);
+                    float item1 = item1_norm / item1_denorm;
+
+                    float item2_norm = 0;
+                    float item2_denorm = 2 * Sqr(m_sigmaColor);
+                    float item2 = item2_norm / item2_denorm;
+
+                    float item3_norm = SafeAcos(frameInfo.m_normal(x, y), frameInfo.m_normal(w, h));
+                    item3_norm = Sqr(item3_norm);
+                    float item3_denorm = 2 * Sqr(m_sigmaNormal);
+                    float item3 = item3_norm / item3_denorm;
+
+                    float item4_norm = frameInfo.m_normal(x, y) * Normalize(Float3(frameInfo.m_position(w, h) - frameInfo.m_position(x, y)));
+                    item4_norm = Sqr(item4_norm);
+                    float item4_denorm = 2 * Sqr(m_alpha);
+                    float item4 = item4_norm / item4_denorm;
+
+                    frameInfo.m_beauty(x, y) += exp(- item1 - item2 - item3 - item4);
+                }
+            }
+
             filteredImage(x, y) = frameInfo.m_beauty(x, y);
         }
     }
