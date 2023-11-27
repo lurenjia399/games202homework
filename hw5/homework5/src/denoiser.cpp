@@ -14,20 +14,26 @@ void Denoiser::Reprojection(const FrameInfo &frameInfo) {
         for (int x = 0; x < width; x++) {
             // TODO: Reproject
             
-            
-
             float cur_m_id = frameInfo.m_id(x, y);
+            if(cur_m_id < 0 )
+            {
+                continue;
+            }
             Float3 curWorldPos = frameInfo.m_position(x, y);
-            Matrix4x4 curModelToWorld = frameInfo.m_matrix[cur_m_id];
+            Matrix4x4 curWorldToModel = Inverse(frameInfo.m_matrix[cur_m_id]);
             Matrix4x4 preModelToWorld = m_preFrameInfo.m_matrix[m_preFrameInfo.m_id(x, y)];
             Matrix4x4 preWorldToScreen = preWorldToScreen;
-            Float3 preFrameScreenPos = preWorldToScreen * preModelToWorld * Inverse(curModelToWorld) * curWorldPos;
-            float pre_m_id = m_preFrameInfo.m_id(preFrameScreenPos.x, preFrameScreenPos.y);
 
-            if (preFrameScreenPos.x > 0 
-                && preFrameScreenPos.x < width 
-                && preFrameScreenPos.y > 0 
-                && preFrameScreenPos.y < height &&
+            Float3 model = curWorldToModel(curWorldPos, Float3::EType::Point);
+            Matrix4x4 preModelToScreen = preWorldToScreen * preModelToWorld;
+            Float3 preModelToScreenPos = preModelToScreen(model, Float3::EType::Point);
+
+            float pre_m_id = m_preFrameInfo.m_id(preModelToScreenPos.x, preModelToScreenPos.y);
+
+            if (preModelToScreenPos.x > 0
+                && preModelToScreenPos.x < width
+                && preModelToScreenPos.y > 0
+                && preModelToScreenPos.y < height &&
                 pre_m_id == cur_m_id) 
             {
 
@@ -36,7 +42,7 @@ void Denoiser::Reprojection(const FrameInfo &frameInfo) {
                 m_valid(x, y) = false;
                 
             }
-            m_misc(x, y) = m_accColor(preFrameScreenPos.x, preFrameScreenPos.y);
+            m_misc(x, y) = m_accColor(preModelToScreenPos.x, preModelToScreenPos.y);
         }
     }
     std::swap(m_misc, m_accColor);
@@ -51,6 +57,30 @@ void Denoiser::TemporalAccumulation(const Buffer2D<Float3> &curFilteredColor) {
         for (int x = 0; x < width; x++) {
             // TODO: Temporal clamp
             Float3 color = m_accColor(x, y);
+            Float3 avg_color = Float3(0.0);
+            Float3 fc_color = Float3(0.0);
+            int x_min = (x - kernelRadius) < 0 ? 0 : x - kernelRadius;
+            int x_max = (x + kernelRadius) > width ? width : x + kernelRadius;
+            int y_min = (y - kernelRadius) < 0 ? 0 : y - kernelRadius;
+            int y_max = (y + kernelRadius) > height ? height : y + kernelRadius;
+            for (int h = y_min; h < y_max; h++) 
+            {
+                for (int w = x_min; w < x_max; w++) 
+                {
+                    avg_color += curFilteredColor(w, h) / 49;
+                }
+            }
+
+            for (int h = y_min; h < y_max; h++)
+            {
+                for (int w = x_min; w < x_max; w++)
+                {
+                    fc_color += Sqr(curFilteredColor(w, h) - avg_color) / 49;
+                }
+            }
+
+            color = Clamp(color, avg_color - fc_color * 2, avg_color + fc_color * 2);
+
             // TODO: Exponential moving average
             float alpha = 1.0f;
             m_misc(x, y) = Lerp(color, curFilteredColor(x, y), alpha);
@@ -74,32 +104,46 @@ Buffer2D<Float3> Denoiser::Filter(const FrameInfo &frameInfo) {
             int y_min = (y - kernelRadius) < 0 ? 0 : y - kernelRadius;
             int y_max = (y + kernelRadius) > height ? height : y + kernelRadius;
             
+            auto center_postion = frameInfo.m_position(x, y);
+            auto center_normal = frameInfo.m_normal(x, y);
+            auto center_color = frameInfo.m_beauty(x, y);
             
+            Float3 final_color;
+            auto total_weight = .0f;
+
             for (int h = y_min; h < y_max; h++) {
                 for (int w = x_min; w < x_max; w++) {
-                    float item1_norm = SqrLength(Float3(w - h, h - y, 0));
-                    float item1_denorm = 2 * Sqr(m_sigmaPlane);
+
+                    auto postion = frameInfo.m_position(w, h);
+                    auto normal = frameInfo.m_normal(w, h);
+                    auto color = frameInfo.m_beauty(w, h);
+
+                    float item1_norm = SqrDistance(center_postion, postion);
+                    float item1_denorm = 2 * Sqr(m_sigmaCoord);
                     float item1 = item1_norm / item1_denorm;
 
-                    float item2_norm = 0;
+                    float item2_norm = SqrDistance(center_color, color);
                     float item2_denorm = 2 * Sqr(m_sigmaColor);
                     float item2 = item2_norm / item2_denorm;
 
-                    float item3_norm = SafeAcos(frameInfo.m_normal(x, y), frameInfo.m_normal(w, h));
+                    float item3_norm = SafeAcos(Dot(center_normal, normal));
                     item3_norm = Sqr(item3_norm);
                     float item3_denorm = 2 * Sqr(m_sigmaNormal);
                     float item3 = item3_norm / item3_denorm;
 
-                    float item4_norm = frameInfo.m_normal(x, y) * Normalize(Float3(frameInfo.m_position(w, h) - frameInfo.m_position(x, y)));
+                    float item4_norm = Dot(center_normal, Normalize(Float3(center_postion - postion)));
                     item4_norm = Sqr(item4_norm);
-                    float item4_denorm = 2 * Sqr(m_alpha);
+                    float item4_denorm = 2 * Sqr(m_sigmaPlane);
                     float item4 = item4_norm / item4_denorm;
 
-                    frameInfo.m_beauty(x, y) += exp(- item1 - item2 - item3 - item4);
+                    // 这段结尾还需要看下联合双边滤波
+                    float weight = exp(-item1 - item2 - item3 - item4);
+                    total_weight += weight;
+                    final_color += color * weight;
                 }
             }
 
-            filteredImage(x, y) = frameInfo.m_beauty(x, y);
+            filteredImage(x, y) = final_color / total_weight;
         }
     }
     return filteredImage;
