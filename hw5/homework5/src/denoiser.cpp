@@ -12,7 +12,7 @@ void Denoiser::Reprojection(const FrameInfo &frameInfo) {
 #pragma omp parallel for
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            // TODO: Reproject
+            
             
             float cur_m_id = frameInfo.m_id(x, y);
             if(cur_m_id < 0 )
@@ -22,7 +22,6 @@ void Denoiser::Reprojection(const FrameInfo &frameInfo) {
             Float3 curWorldPos = frameInfo.m_position(x, y);
             Matrix4x4 curWorldToModel = Inverse(frameInfo.m_matrix[cur_m_id]);
             Matrix4x4 preModelToWorld = m_preFrameInfo.m_matrix[m_preFrameInfo.m_id(x, y)];
-            Matrix4x4 preWorldToScreen = preWorldToScreen;
 
             Float3 model = curWorldToModel(curWorldPos, Float3::EType::Point);
             Matrix4x4 preModelToScreen = preWorldToScreen * preModelToWorld;
@@ -43,6 +42,10 @@ void Denoiser::Reprojection(const FrameInfo &frameInfo) {
                 
             }
             m_misc(x, y) = m_accColor(preModelToScreenPos.x, preModelToScreenPos.y);
+
+            // TODO: Reproject
+            //m_valid(x, y) = false;
+            //m_misc(x, y) = Float3(0.f);
         }
     }
     std::swap(m_misc, m_accColor);
@@ -81,9 +84,15 @@ void Denoiser::TemporalAccumulation(const Buffer2D<Float3> &curFilteredColor) {
 
             color = Clamp(color, avg_color - fc_color * 2, avg_color + fc_color * 2);
 
-            // TODO: Exponential moving average
+            //// TODO: Exponential moving average
             float alpha = 1.0f;
             m_misc(x, y) = Lerp(color, curFilteredColor(x, y), alpha);
+
+            // TODO: Temporal clamp
+            //Float3 color = m_accColor(x, y);
+            //// TODO: Exponential moving average
+            //float alpha = 1.0f;
+            //m_misc(x, y) = Lerp(color, curFilteredColor(x, y), alpha);
         }
     }
     std::swap(m_misc, m_accColor);
@@ -98,6 +107,7 @@ Buffer2D<Float3> Denoiser::Filter(const FrameInfo &frameInfo) {
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
             // TODO: Joint bilateral filter
+            filteredImage(x, y) = frameInfo.m_beauty(x, y);
 
             int x_min = (x - kernelRadius) < 0 ? 0 : x - kernelRadius;
             int x_max = (x + kernelRadius) > width ? width : x + kernelRadius;
@@ -109,7 +119,7 @@ Buffer2D<Float3> Denoiser::Filter(const FrameInfo &frameInfo) {
             auto center_color = frameInfo.m_beauty(x, y);
             
             Float3 final_color;
-            auto total_weight = .0f;
+            auto total_weight = 0.00001f;
 
             for (int h = y_min; h < y_max; h++) {
                 for (int w = x_min; w < x_max; w++) {
@@ -117,6 +127,8 @@ Buffer2D<Float3> Denoiser::Filter(const FrameInfo &frameInfo) {
                     auto postion = frameInfo.m_position(w, h);
                     auto normal = frameInfo.m_normal(w, h);
                     auto color = frameInfo.m_beauty(w, h);
+
+                    if (Length(center_postion - postion) <= 0.000001 ) continue;
 
                     float item1_norm = SqrDistance(center_postion, postion);
                     float item1_denorm = 2 * Sqr(m_sigmaCoord);
@@ -136,8 +148,8 @@ Buffer2D<Float3> Denoiser::Filter(const FrameInfo &frameInfo) {
                     float item4_denorm = 2 * Sqr(m_sigmaPlane);
                     float item4 = item4_norm / item4_denorm;
 
-                    // 这段结尾还需要看下联合双边滤波
-                    float weight = exp(-item1 - item2 - item3 - item4);
+                    // 联合双边滤波, 每个颜色 * 权重 相加 / 总权重
+                    float weight = exp(-item1 - item2 - item3);
                     total_weight += weight;
                     final_color += color * weight;
                 }
