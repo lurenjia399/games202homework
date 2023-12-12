@@ -48,7 +48,8 @@ void main(void) {
 
 shadow map方法的一个缺点在于其阴影质量取决于shadow map的分辨率和z-buffer的数值精度，所以存在一个常见的自阴影走样（self-shadow aliasing）问题，将会导致一些三角形被误认为是阴影，如下图的地面。
 
-![image-20230919203927151](F:\learn\games202homework\image\image-20230919203927151.png)
+![image-20230919203927151](https://github.com/lurenjia399/games202homework/assets/62169763/b6cc9481-c501-48f8-b605-635f4d5af104)
+
 
 这个错误源于两点，其一是处理器数值精度不够，其二是实际上z-buffer中采样的像素点包含了一片区域，计算的仅是这片区域中心的位置。如下图中，视野看向的位置被错误地遮挡了。
 
