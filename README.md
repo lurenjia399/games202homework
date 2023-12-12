@@ -665,6 +665,34 @@ glossy物体的BRDF就不是一个常数了，我们从不同的方向看过去�
 
 特点：1 不依赖排序，是OIT的 2 pass过多，存在性能问题。
 
+解释思路：我们一般渲染半透明物体就是从后往前渲染，在混合测试的时候将当前透明度 * 当前颜色+（1 - 透明度）* color-buffer颜色，这样做就默认color-buffer里的颜色是不透明的，所以这也就导致了和顺序强相关，以及不能将两个透明层先进行混合。所以优化下混合公式，当前透明度 * 当前颜色+（1 - 透明度）* color-buffer颜色 * alpha-buffer，这样解决了上面两个痛点，
+
+## 3 A-Buffer
+
+主要思想为：在每个像素存储一个链表，此链表存储着这个像素重叠的多个片元的信息。
+
+创建 Linked Lists 需要两个 UAV(Unordered Access View) 缓冲，分别是：
+
+1） Fragment & Link buffer：尺寸需要足够大，以存储每个片元构成的节点
+
+2） Start Offset buffer：尺寸和视口 (Viewport) 一致
+
+L.L 工作原理如下图所示：
+
+![image-20231211105920328](D:\GitHub\games202homework\image\image-20231211105920328.png)
+
+L.L 技术用于 OIT 时，需要作以下调整：
+
+1） Fragment & Link buffer 存储的值有三个：片元 RGBA、片元 Depth、Next
+
+2） 在使用 L.L 时，找到当前像素对应的多个片元信息后，还需要根据深度排序才能混合
+
+![image-20231211110002480](D:\GitHub\games202homework\image\image-20231211110002480.png)
+
+A-Buffer的整个过程只用了3次pass，但是引入了额外的不固定的内存，所以无法用在实时渲染中只能用在离线渲染上。
+
+解释思路：这种A-Buffer的算法总体上的思路就是对每个片元都存储一个链表，这个链表里面存储的是片元颜色，偏远深度，链表索引。总共分为三个pass，第一个pass是渲染不透明物体，得到z-buffer和color-buffer。第二个pass是渲染半透明物体，创建片元链表信息（两个UAV网格，可能得计算着色器来算？一个是StartOffsetBuffer，记录链表头的，LinkBuffer用来记录链表体）第三个pass是使用链表信息，在片元着色器中读取出每个片元链表里的信息，按照深度排序，存在TempArray里面，然后送入混合阶段与color-buffer进行混合，最后更新color-buffer。
+
 
 
 # 13 Uncovered Topics
